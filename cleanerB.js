@@ -1,22 +1,25 @@
 // File: cleanerB.js
-// Commit: update cleanerB to read from s2 prompt folder, upload to DB, and clean local files
+// Commit: fix path resolution to use __dirname logic for ESM modular compatibility
 
 import dotenv from 'dotenv';
 import fs from 'fs/promises';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { createClient } from '@supabase/supabase-js';
 
 dotenv.config();
 
 console.log('=== Running cleanerB.js ===');
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE
 );
 
-// Read from serverB’s prompt output folder
-const DIR = path.resolve('../s2/data/prompts');
+// Read from shared prompt folder in s2
+const DIR = path.join(__dirname, '../s2/data/prompts');
 
 async function uploadWordsets(file) {
   const fullPath = path.join(DIR, file);
