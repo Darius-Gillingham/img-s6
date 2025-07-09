@@ -2,7 +2,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "start": "node cleanerB.js"
+    "start": "node serverE.js"
   },
   "keywords": [],
   "author": "Darius Gillingham",
