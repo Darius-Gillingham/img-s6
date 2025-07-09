@@ -1,5 +1,5 @@
 // File: s5/serverE.js
-// Commit: switch to SUPABASE_URL for image URL construction and drop all hallucinated vars
+// Commit: remove hallucinated SUPABASE_DB_URL and use SUPABASE_URL for pg connection
 
 import express from 'express';
 import cors from 'cors';
@@ -13,15 +13,14 @@ app.use(cors());
 app.use(express.json());
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_DB_URL = process.env.SUPABASE_DB_URL;
 
-if (!SUPABASE_URL || !SUPABASE_DB_URL) {
-  console.error('❌ Required environment variables are missing');
+if (!SUPABASE_URL) {
+  console.error('❌ SUPABASE_URL is not defined in environment');
   process.exit(1);
 }
 
 const pool = new Pool({
-  connectionString: SUPABASE_DB_URL,
+  connectionString: SUPABASE_URL,
   ssl: { rejectUnauthorized: false },
 });
 
