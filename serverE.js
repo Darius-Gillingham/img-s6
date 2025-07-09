@@ -1,45 +1,43 @@
 // File: serverE.js
-// Commit: enable CORS for Vercel frontend to fix blocked fetch requests
 
 import express from 'express';
 import cors from 'cors';
 import pkg from 'pg';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 const { Pool } = pkg;
 const app = express();
 const port = process.env.PORT || 8080;
 
-// Allow requests from your Vercel frontend
-app.use(cors({
-  origin: 'https://img-front-de8fz5o3b-darius-gillinghams-projects.vercel.app'
-}));
-
-// Parse JSON requests
+app.use(cors());
 app.use(express.json());
 
-// PostgreSQL connection
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: {
-    rejectUnauthorized: false
-  }
+  ssl: { rejectUnauthorized: false }
 });
 
-// Route to get 10 random image URLs from image_index table
 app.get('/api/random-images', async (req, res) => {
   try {
-    const { rows } = await pool.query(
-      'SELECT path FROM image_index ORDER BY RANDOM() LIMIT 10'
-    );
-    const urls = rows.map(r => r.path);
+    const result = await pool.query(`
+      SELECT url FROM image_index
+      ORDER BY RANDOM()
+      LIMIT 10;
+    `);
+    const urls = result.rows.map(row => row.url);
     res.json(urls);
   } catch (err) {
-    console.error('Error fetching images:', err);
-    res.status(500).json({ error: 'Failed to fetch images' });
+    console.error('✗ Error fetching from image_index:', err);
+    res.status(500).json({ error: 'Internal Server Error' });
   }
 });
 
-// Start server
+app.get('/health', (req, res) => {
+  res.send('✓ Backend is alive');
+});
+
 app.listen(port, () => {
   console.log(`✓ serverE listening on port ${port}`);
 });
