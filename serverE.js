@@ -1,60 +1,44 @@
 // File: serverE.js
-// Commit: launch Express API server with `/api/random-images` route to return signed Supabase image URLs
+// Commit: add CORS support for Vercel frontend
 
 import express from 'express';
-import dotenv from 'dotenv';
-import { createClient } from '@supabase/supabase-js';
+import cors from 'cors';
+import pkg from 'pg';
 
-dotenv.config();
+const { Pool } = pkg;
 
 const app = express();
-const port = process.env.PORT || 3000;
+const port = 8080;
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE
-);
+// Allow requests from the deployed Vercel frontend
+app.use(cors({
+  origin: 'https://img-front-1gesgreh8-darius-gillinghams-projects.vercel.app',
+}));
 
-app.get('/api/random-images', async (req, res) => {
-  try {
-    const { data, error } = await supabase
-      .from('image_index')
-      .select('path')
-      .order('created_at', { ascending: false })
-      .limit(1000);
-
-    if (error || !data) {
-      console.warn('✗ Failed to fetch image_index:', error?.message);
-      return res.status(500).json([]);
-    }
-
-    const shuffled = data.sort(() => Math.random() - 0.5).slice(0, 15);
-
-    const signed = await Promise.all(
-      shuffled.map(async ({ path }) => {
-        const { data: urlData, error: urlError } = await supabase.storage
-          .from('generated-images')
-          .createSignedUrl(path, 3600);
-
-        if (urlError || !urlData?.signedUrl) {
-          console.warn(`✗ Could not sign path ${path}:`, urlError?.message);
-          return null;
-        }
-
-        return urlData.signedUrl;
-      })
-    );
-
-    const filtered = signed.filter(Boolean);
-    res.json(filtered);
-  } catch (err) {
-    console.error('✗ Error in /api/random-images:', err instanceof Error ? err.message : err);
-    res.status(500).json([]);
-  }
+// PostgreSQL connection
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: {
+    rejectUnauthorized: false,
+  },
 });
 
-app.get('/', (_, res) => {
-  res.send('✓ Image index server is running');
+// Endpoint to return 15 random image paths
+app.get('/api/random-images', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT path FROM image_index
+      ORDER BY RANDOM()
+      LIMIT 15
+    `);
+    const urls = result.rows.map(row =>
+      `https://${process.env.SUPABASE_BUCKET}.supabase.co/storage/v1/object/public/${row.path}`
+    );
+    res.json(urls);
+  } catch (err) {
+    console.error('✗ Failed to fetch image paths:', err);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
 });
 
 app.listen(port, () => {
