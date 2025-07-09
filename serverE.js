@@ -1,46 +1,45 @@
 // File: serverE.js
-// Commit: add CORS support for Vercel frontend
+// Commit: enable CORS for Vercel frontend to fix blocked fetch requests
 
 import express from 'express';
 import cors from 'cors';
 import pkg from 'pg';
 
 const { Pool } = pkg;
-
 const app = express();
-const port = 8080;
+const port = process.env.PORT || 8080;
 
-// Allow requests from the deployed Vercel frontend
+// Allow requests from your Vercel frontend
 app.use(cors({
-  origin: 'https://img-front-1gesgreh8-darius-gillinghams-projects.vercel.app',
+  origin: 'https://img-front-de8fz5o3b-darius-gillinghams-projects.vercel.app'
 }));
+
+// Parse JSON requests
+app.use(express.json());
 
 // PostgreSQL connection
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: {
-    rejectUnauthorized: false,
-  },
-});
-
-// Endpoint to return 15 random image paths
-app.get('/api/random-images', async (req, res) => {
-  try {
-    const result = await pool.query(`
-      SELECT path FROM image_index
-      ORDER BY RANDOM()
-      LIMIT 15
-    `);
-    const urls = result.rows.map(row =>
-      `https://${process.env.SUPABASE_BUCKET}.supabase.co/storage/v1/object/public/${row.path}`
-    );
-    res.json(urls);
-  } catch (err) {
-    console.error('✗ Failed to fetch image paths:', err);
-    res.status(500).json({ error: 'Internal Server Error' });
+    rejectUnauthorized: false
   }
 });
 
+// Route to get 10 random image URLs from image_index table
+app.get('/api/random-images', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      'SELECT path FROM image_index ORDER BY RANDOM() LIMIT 10'
+    );
+    const urls = rows.map(r => r.path);
+    res.json(urls);
+  } catch (err) {
+    console.error('Error fetching images:', err);
+    res.status(500).json({ error: 'Failed to fetch images' });
+  }
+});
+
+// Start server
 app.listen(port, () => {
   console.log(`✓ serverE listening on port ${port}`);
 });
