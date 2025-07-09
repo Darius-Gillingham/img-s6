@@ -13,14 +13,15 @@ app.use(cors());
 app.use(express.json());
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_DB_URL = process.env.SUPABASE_DB_URL;
 
-if (!SUPABASE_URL) {
-  console.error('❌ SUPABASE_URL is not defined in environment');
+if (!SUPABASE_URL || !SUPABASE_DB_URL) {
+  console.error('❌ Required environment variables are missing');
   process.exit(1);
 }
 
 const pool = new Pool({
-  connectionString: process.env.SUPABASE_URL,
+  connectionString: SUPABASE_DB_URL,
   ssl: { rejectUnauthorized: false },
 });
 
