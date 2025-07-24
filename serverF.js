@@ -1,11 +1,12 @@
 // File: s6/serverF.js
-// Commit: fix CommonJS import of Jimp using createRequire for ESM compatibility
+// Commit: remove serverE dependency and output clustered images to local JSON files by dominant color group
 
 import express from 'express';
 import cors from 'cors';
-import { createClient } from '@supabase/supabase-js';
-import axios from 'axios';
+import fs from 'fs';
+import path from 'path';
 import { createRequire } from 'module';
+import { createClient } from '@supabase/supabase-js';
 
 const require = createRequire(import.meta.url);
 const Jimp = require('jimp');
@@ -16,30 +17,43 @@ app.use(express.json());
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE;
-const SERVER_E_ENDPOINT = process.env.SERVER_E_ENDPOINT;
-const SERVER_G_ENDPOINT = process.env.SERVER_G_ENDPOINT;
 
-if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE || !SERVER_E_ENDPOINT || !SERVER_G_ENDPOINT) {
+if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE) {
   console.error('❌ Missing required environment variables');
   process.exit(1);
 }
 
-const RADIUS = 30;
-const CLUSTERS_REQUIRED = 5;
-const NEIGHBOR_BATCH_SIZE = 12;
-
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE);
+const RADIUS = 30;
+const REGIONS = 4;
+const COLOR_BUCKET_SIZE = 20;
+const OUTPUT_DIR = './output';
 
-function euclideanDistance(a, b) {
-  return Math.sqrt((a.r - b.r) ** 2 + (a.g - b.g) ** 2 + (a.b - b.b) ** 2);
+function getBucketColor({ r, g, b }) {
+  const bucket = (val) => Math.round(val / COLOR_BUCKET_SIZE) * COLOR_BUCKET_SIZE;
+  return {
+    r: bucket(r),
+    g: bucket(g),
+    b: bucket(b),
+  };
 }
 
-async function sampleImageColor(url, regions = 4) {
+function colorToFilename({ r, g, b }) {
+  return `r_${r}_g_${g}_b_${b}.json`;
+}
+
+function ensureDirExists(dirPath) {
+  if (!fs.existsSync(dirPath)) {
+    fs.mkdirSync(dirPath, { recursive: true });
+  }
+}
+
+async function sampleImageColor(url) {
   const image = await Jimp.read(url);
   const { width, height } = image.bitmap;
   const samples = [];
 
-  for (let i = 0; i < regions; i++) {
+  for (let i = 0; i < REGIONS; i++) {
     const x = Math.floor(Math.random() * width);
     const y = Math.floor(Math.random() * height);
     let r = 0, g = 0, b = 0, count = 0;
@@ -61,55 +75,53 @@ async function sampleImageColor(url, regions = 4) {
     samples.push({ r: r / count, g: g / count, b: b / count });
   }
 
-  const avg = samples.reduce((acc, c) => ({
-    r: acc.r + c.r / samples.length,
-    g: acc.g + c.g / samples.length,
-    b: acc.b + c.b / samples.length,
-  }), { r: 0, g: 0, b: 0 });
-
-  return avg;
+  return samples.reduce(
+    (acc, c) => ({
+      r: acc.r + c.r / samples.length,
+      g: acc.g + c.g / samples.length,
+      b: acc.b + c.b / samples.length,
+    }),
+    { r: 0, g: 0, b: 0 }
+  );
 }
 
-app.get('/api/scan-and-cluster', async (req, res) => {
+app.get('/api/scan-and-group', async (req, res) => {
   try {
-    const { data: imageUrls } = await axios.get(`${SERVER_E_ENDPOINT}`);
+    ensureDirExists(OUTPUT_DIR);
 
-    const imageProfiles = [];
+    const { data, error } = await supabase
+      .from('image_index')
+      .select('path')
+      .order('created_at', { ascending: false })
+      .limit(50);
+
+    if (error) throw error;
+
+    const imageUrls = data.map((row) => `${SUPABASE_URL}/storage/v1/object/public/generated-images/${row.path}`);
+    const grouped = {};
+
     for (const url of imageUrls) {
       try {
-        const color = await sampleImageColor(url);
-        imageProfiles.push({ url, color });
+        const avgColor = await sampleImageColor(url);
+        const bucket = getBucketColor(avgColor);
+        const key = colorToFilename(bucket);
+
+        if (!grouped[key]) grouped[key] = [];
+        grouped[key].push(url);
       } catch (err) {
-        console.warn(`⚠️ Failed to process ${url}:`, err.message);
+        console.warn(`⚠️ Skipped image ${url}: ${err.message}`);
       }
     }
 
-    const clusters = [];
-
-    for (let i = 0; i < imageProfiles.length; i++) {
-      const current = imageProfiles[i];
-      const cluster = imageProfiles.filter(p =>
-        euclideanDistance(p.color, current.color) < 40
-      );
-
-      if (cluster.length >= CLUSTERS_REQUIRED) {
-        const selected = cluster.slice(0, NEIGHBOR_BATCH_SIZE);
-        clusters.push(selected.map(c => c.url));
-      }
+    for (const [filename, urls] of Object.entries(grouped)) {
+      const fullPath = path.join(OUTPUT_DIR, filename);
+      fs.writeFileSync(fullPath, JSON.stringify(urls, null, 2));
     }
 
-    if (clusters.length === 0) {
-      return res.json({ message: 'No viable clusters found.' });
-    }
-
-    for (const batch of clusters) {
-      await axios.post(`${SERVER_G_ENDPOINT}`, { images: batch });
-    }
-
-    res.json({ message: '✓ Clustered and forwarded batches', total: clusters.length });
+    res.json({ message: '✓ Grouped and written to disk', groups: Object.keys(grouped).length });
   } catch (err) {
-    console.error('✗ Error during clustering:', err.message);
-    res.status(500).json({ error: 'Clustering failed' });
+    console.error('✗ Error in scan-and-group:', err.message);
+    res.status(500).json({ error: 'Failed to group images' });
   }
 });
 
