@@ -1,13 +1,14 @@
 // File: s6/serverF.js
-// Commit: fix Jimp import compatibility for ESM environment
+// Commit: fix CommonJS import of Jimp using createRequire for ESM compatibility
 
 import express from 'express';
 import cors from 'cors';
 import { createClient } from '@supabase/supabase-js';
-import jimpPkg from 'jimp';
 import axios from 'axios';
+import { createRequire } from 'module';
 
-const Jimp = jimpPkg.default || jimpPkg;
+const require = createRequire(import.meta.url);
+const Jimp = require('jimp');
 
 const app = express();
 app.use(cors());
