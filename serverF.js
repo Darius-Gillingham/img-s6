@@ -1,11 +1,13 @@
 // File: s6/serverF.js
-// Commit: implement color-based clustering of Supabase images and forward similar sets to serverG test
+// Commit: fix Jimp import compatibility for ESM environment
 
 import express from 'express';
 import cors from 'cors';
 import { createClient } from '@supabase/supabase-js';
-import Jimp from 'jimp';
+import jimpPkg from 'jimp';
 import axios from 'axios';
+
+const Jimp = jimpPkg.default || jimpPkg;
 
 const app = express();
 app.use(cors());
@@ -13,8 +15,8 @@ app.use(express.json());
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE;
-const SERVER_E_ENDPOINT = process.env.SERVER_E_ENDPOINT; // e.g., http://serverE:8080/api/random-images
-const SERVER_G_ENDPOINT = process.env.SERVER_G_ENDPOINT; // e.g., http://serverG:8082/api/transition-batch
+const SERVER_E_ENDPOINT = process.env.SERVER_E_ENDPOINT;
+const SERVER_G_ENDPOINT = process.env.SERVER_G_ENDPOINT;
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE || !SERVER_E_ENDPOINT || !SERVER_G_ENDPOINT) {
   console.error('❌ Missing required environment variables');
@@ -45,9 +47,11 @@ async function sampleImageColor(url, regions = 4) {
       for (let dy = -RADIUS; dy <= RADIUS; dy++) {
         const nx = x + dx;
         const ny = y + dy;
-        if (nx >= 0 && ny >= 0 && nx < width && ny < height && dx*dx + dy*dy <= RADIUS*RADIUS) {
+        if (nx >= 0 && ny >= 0 && nx < width && ny < height && dx * dx + dy * dy <= RADIUS * RADIUS) {
           const color = Jimp.intToRGBA(image.getPixelColor(nx, ny));
-          r += color.r; g += color.g; b += color.b;
+          r += color.r;
+          g += color.g;
+          b += color.b;
           count++;
         }
       }
@@ -84,7 +88,7 @@ app.get('/api/scan-and-cluster', async (req, res) => {
     for (let i = 0; i < imageProfiles.length; i++) {
       const current = imageProfiles[i];
       const cluster = imageProfiles.filter(p =>
-        euclideanDistance(p.color, current.color) < 40 // Adjust for tighter/looser match
+        euclideanDistance(p.color, current.color) < 40
       );
 
       if (cluster.length >= CLUSTERS_REQUIRED) {
