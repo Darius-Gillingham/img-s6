@@ -1,5 +1,5 @@
 // File: s6/serverF.js
-// Commit: implement color-based clustering of Supabase images and forward similar sets to serverG
+// Commit: implement color-based clustering of Supabase images and forward similar sets to serverG test
 
 import express from 'express';
 import cors from 'cors';
