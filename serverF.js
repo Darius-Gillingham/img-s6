@@ -1,5 +1,5 @@
 // File: s6/serverF.js
-// Commit: remove serverE dependency and output clustered images to local JSON files by dominant color group
+// Commit: add cluster index API and static JSON output for frontend viewer integration
 
 import express from 'express';
 import cors from 'cors';
@@ -124,6 +124,22 @@ app.get('/api/scan-and-group', async (req, res) => {
     res.status(500).json({ error: 'Failed to group images' });
   }
 });
+
+app.get('/api/clusters', (_, res) => {
+  try {
+    const files = fs.readdirSync(OUTPUT_DIR).filter(f => f.endsWith('.json'));
+    const result = files.map(filename => ({
+      group: filename.replace('.json', ''),
+      imagesUrl: `/output/${filename}`
+    }));
+    res.json(result);
+  } catch (err) {
+    console.error('✗ Failed to read output directory:', err.message);
+    res.status(500).json({ error: 'Unable to read clusters' });
+  }
+});
+
+app.use('/output', express.static(path.join(OUTPUT_DIR)));
 
 app.get('/health', (_, res) => {
   res.send('✓ serverF is alive');
